@@ -1,0 +1,8 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Postmortem: tenant cache leak</title>
+<style>body{font:16px/1.6 system-ui;margin:40px;max-width:720px}</style></head><body>
+<h1>Postmortem: tenant cache leak</h1>
+<p id="warm">This short paragraph is used to load the model.</p>
+<p id="long">The root cause is that the cache key only includes the user ID, not the tenant ID. When the same user belongs to two tenants, the second request reads the first tenant's cached permissions, which is why the dashboard briefly shows projects the user should not see. I changed buildCacheKey() to include the tenant ID and added a regression test that logs in to two tenants in sequence. The fix is backward compatible, so old cache entries are simply rebuilt on the next request and no migration is needed.</p>
+<p>Large language models are trained on vast amounts of text collected from the public web, and they are increasingly used for translation tasks.</p>
+<p>They can translate, summarize, and answer questions, but they sometimes produce confident mistakes that are hard to notice.</p>
+</body></html>

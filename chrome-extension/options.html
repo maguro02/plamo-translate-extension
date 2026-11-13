@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>PLaMo 翻訳の設定</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1f2328; --muted: #656d76; --border: #d0d7de; --accent: #0969da; --warn: #9a6700;
+    color-scheme: light dark;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #1f2328; --fg: #e6edf3; --muted: #9198a1; --border: #3d444d; --accent: #4493f8; --warn: #d29922; }
+  }
+  body {
+    margin: 0; padding: 20px 24px; min-width: 420px; background: var(--bg); color: var(--fg);
+    font: 14px/1.7 -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", "Noto Sans JP", "Yu Gothic UI", sans-serif;
+  }
+  [hidden] { display: none !important; }
+  h1 { margin: 0 0 16px; font-size: 16px; }
+  fieldset { margin: 0 0 16px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 8px; }
+  legend { padding: 0 4px; font-weight: 600; }
+  label { display: flex; gap: 8px; align-items: flex-start; margin: 6px 0; cursor: pointer; }
+  input { margin-top: 5px; accent-color: var(--accent); }
+  .hint { display: block; font-size: 12px; color: var(--muted); }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 8px; font-size: 12px; color: var(--muted); }
+  .warn { color: var(--warn); }
+  button {
+    font: inherit; font-size: 12px; color: var(--fg); background: none; border: 1px solid var(--border);
+    border-radius: 6px; padding: 2px 10px; cursor: pointer;
+  }
+  button:disabled { opacity: 0.5; cursor: default; }
+  a { color: var(--accent); }
+  #saved { min-height: 1.7em; font-size: 12px; color: var(--muted); }
+  .license { font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+  <h1>PLaMo 翻訳の設定</h1>
+  <fieldset>
+    <legend>翻訳エンジン</legend>
+    <label>
+      <input type="radio" name="engine" value="auto">
+      <span>自動（標準）
+        <span class="hint">翻訳サーバーが起動していればそれを使い、起動していなければブラウザ内（0.8B）で翻訳します。</span></span>
+    </label>
+    <label>
+      <input type="radio" name="engine" value="browser-0.8b">
+      <span>ブラウザ内で動かす（0.8B）
+        <span class="hint">初回に翻訳モデル（約0.6GB）をダウンロードします。以降はオフラインでも使えます。</span></span>
+    </label>
+    <label>
+      <input type="radio" name="engine" value="browser-2b">
+      <span>ブラウザ内で動かす（2B・高品質）
+        <span class="hint">訳の品質が上がりますが、ダウンロード（約1.8GB）と翻訳に時間がかかります。</span></span>
+    </label>
+    <label>
+      <input type="radio" name="engine" value="server">
+      <span>翻訳サーバーだけを使う（127.0.0.1:8802）
+        <span class="hint">同梱の翻訳サーバー（または llama-server）を起動して使います。最も速く訳せます。</span></span>
+    </label>
+    <div class="row"><span id="engine-status">状態を確認中…</span></div>
+    <div class="row">
+      <span id="cache-size"></span>
+      <button id="delete-models" type="button">ダウンロードしたモデルを削除</button>
+    </div>
+  </fieldset>
+  <fieldset>
+    <legend>翻訳サーバー（高速化）</legend>
+    <div class="row" style="margin-top: 0"><span id="server-status">状態を確認中…</span></div>
+    <div class="row">
+      <button id="server-start" type="button">起動</button>
+      <button id="server-stop" type="button">停止</button>
+    </div>
+    <div class="row" id="model-update-row" hidden>
+      <span>翻訳モデルの新しい版があります。</span>
+      <button id="model-update" type="button">更新</button>
+    </div>
+    <label>
+      <input type="checkbox" name="autoStartServer">
+      <span>翻訳するときに自動で起動する
+        <span class="hint">翻訳エンジンが「自動」のときに使います。起動するまでの間はブラウザ内で翻訳します。</span></span>
+    </label>
+    <span class="hint">拡張から起動した翻訳サーバーは、Chrome を終了すると止まります。初めて使うときは、同梱の PLaMoTranslateServer.exe（Mac は start-server.command）を1回実行して登録してください。</span>
+  </fieldset>
+  <fieldset>
+    <legend>日本語に訳すときの文体</legend>
+    <label>
+      <input type="radio" name="form" value="polite">
+      <span>です・ます調（標準）
+        <span class="hint">くだけた口調になるのを防ぎ、文体をそろえます。</span></span>
+    </label>
+    <label>
+      <input type="radio" name="form" value="plain">
+      <span>だ・である調</span>
+    </label>
+    <label>
+      <input type="radio" name="form" value="none">
+      <span>指定しない
+        <span class="hint">原文に合わせて翻訳モデルが決めます。段落ごとに文体が混ざることがあります。</span></span>
+    </label>
+  </fieldset>
+  <fieldset>
+    <legend>ページ全体を翻訳したときの表示</legend>
+    <label>
+      <input type="radio" name="pageMode" value="bilingual">
+      <span>原文を残し、各段落の下に訳文を表示する（対訳）
+        <span class="hint">リンクや太字などの書式はそのまま残ります。</span></span>
+    </label>
+    <label>
+      <input type="radio" name="pageMode" value="replace">
+      <span>原文を訳文に置き換える
+        <span class="hint">段落内のリンクや太字は失われます。訳文にカーソルを合わせると原文を表示します。</span></span>
+    </label>
+  </fieldset>
+  <fieldset>
+    <legend>テキストの選択</legend>
+    <label>
+      <input type="checkbox" name="selectionButton">
+      <span>選択し終えたときにカーソル位置に「訳」ボタンを表示する
+        <span class="hint">オフにしても、右クリックメニューとショートカットで翻訳できます。</span></span>
+    </label>
+  </fieldset>
+  <div id="saved" role="status"></div>
+  <p class="license">
+    翻訳モデル PLaMo 3 Translate（Preferred Networks）は
+    <a href="https://huggingface.co/pfnet/plamo-3-translate-0.8b-GGUF" target="_blank" rel="noopener">PLaMo Community License</a>
+    で提供されています。Built with PLaMo。推論には <a href="https://github.com/ngxson/wllama" target="_blank" rel="noopener">wllama</a>（MIT License）を使っています。
+  </p>
+  <script src="options.js"></script>
+</body>
+</html>

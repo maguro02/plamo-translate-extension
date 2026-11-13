@@ -1,0 +1,16 @@
+.DS_Store
+node_modules/
+
+# 秘密鍵・モデル・作業用ファイル・配布物（配布物は GitHub Releases に置く）
+/.keys/
+/models/
+/.work/
+/.venv/
+/.cache/
+/dist/
+/logs/
+
+# 手元の Mac 用の設定（Claude Code の表示翻訳、自動起動）
+/bin/
+/launchd/
+/LOCAL.md

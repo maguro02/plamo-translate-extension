@@ -1,0 +1,11 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Releasing Example Framework 3.0</title>
+<meta property="og:site_name" content="Example Dev Blog">
+<style>body{font:16px/1.6 system-ui;margin:40px;max-width:720px}</style></head><body>
+<h1>Releasing Example Framework 3.0</h1>
+<p>We spent the last year rewriting the build pipeline. It's a no-brainer: if you don't pin your dependencies, your builds will eventually break. That is why 3.0 now generates a lockfile by default.</p>
+<p>The new release ships with a handful of breaking changes, so read the migration guide before upgrading. Most projects need only a few small edits.</p>
+<p>Under the hood, the scheduler batches requests to keep the GPU busy. This alone cut our inference costs by a third.</p>
+<p>Streaming responses are also available. This feature is opt-in and off by default.</p>
+<p>We'd love to hear your feedback, so drop us a line on GitHub. Thank you for using Example Framework.</p>
+<p lang="ja">レビューの進め方について。このPRのレビューコメントに対応して、型エラーを全部直してからコミットして。CI が通ったらマージします。</p>
+</body></html>

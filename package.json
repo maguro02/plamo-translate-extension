@@ -1,0 +1,16 @@
+{
+  "name": "plamo-translate-extension",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:e2e": "node tests/e2e.mjs chrome-extension browser-0.8b",
+    "test:stream": "node tests/stream.mjs chrome-extension browser-0.8b",
+    "test:context": "node tests/eval-context.mjs chrome-extension",
+    "test:launcher": "cd launcher && go test ./...",
+    "package": "scripts/package-bundle.sh",
+    "package:extension": "scripts/package-extension.sh"
+  },
+  "devDependencies": {
+    "playwright": "1.64.0"
+  }
+}

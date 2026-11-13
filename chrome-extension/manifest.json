@@ -1,0 +1,67 @@
+{
+  "manifest_version": 3,
+  "name": "PLaMo 翻訳（ローカル）",
+  "version": "0.10.0",
+  "description": "選択したテキストやページを、ブラウザの中で動く PLaMo 3 Translate で翻訳します。翻訳する文章は外部に送りません。",
+  "minimum_chrome_version": "124",
+  "permissions": [
+    "contextMenus",
+    "activeTab",
+    "scripting",
+    "storage",
+    "offscreen",
+    "unlimitedStorage",
+    "nativeMessaging"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1/*",
+    "https://huggingface.co/*",
+    "https://*.hf.co/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "PLaMo 翻訳の設定"
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": false
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+  },
+  "cross_origin_embedder_policy": {
+    "value": "require-corp"
+  },
+  "cross_origin_opener_policy": {
+    "value": "same-origin"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "all_frames": true,
+      "run_at": "document_idle"
+    }
+  ],
+  "commands": {
+    "translate-selection": {
+      "suggested_key": {
+        "default": "Alt+Shift+T"
+      },
+      "description": "選択範囲を翻訳"
+    },
+    "translate-page": {
+      "suggested_key": {
+        "default": "Alt+Shift+P"
+      },
+      "description": "ページ全体を翻訳 / 元に戻す"
+    }
+  },
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAoTczEw0UKftyKyvBYT7O1hVLAY+aZka8juzHnTAwLoCY9tQ8vpJ8fX7zXk6wL2EUrgCZ4vWM9X6H2G7NDFpp7KNgcIb2hzJJDZ8RxGYuBQcXcpetsW3spVK/NfnLuEitW0+qWJzcUufcBj8PaZoFVKPe9qYEn3qqpgIcx5hAOHFh8eYH4nThe8lWu0r8pYZeJzNRU3c2FqrkgyDNtDPnllrqD5kGyGBLqxx93pLEJGgR5ilhOtgt+gkNOAHxQYdOKBhNptufZm3zuUJFq1pqX1pmfHTbHjoqUmo0EMm2RT/8NXj3vWfiTDkpD0/+rVfi/d3W0Fy+eTCpsOkYCnR8fwIDAQAB"
+}
