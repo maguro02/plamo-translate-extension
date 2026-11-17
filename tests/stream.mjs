@@ -18,42 +18,36 @@ await page.waitForTimeout(300);
 const tabId = await sw.evaluate(async () => (await chrome.tabs.query({})).sort((a, b) => b.id - a.id)[0].id);
 const call = (fn) => sw.evaluate(([id, f]) => run(id, 0, new Function(`return globalThis.__plamoTranslate?.${f}()`)), [tabId, fn]);
 const select = (sel) => page.evaluate((s) => { const r = document.createRange(); r.selectNodeContents(document.querySelector(s)); getSelection().removeAllRanges(); getSelection().addRange(r); }, sel);
-// 窓の中身をページ内で 10ms ごとに見張り、最初の文字が出た時刻と確定した時刻を記録する
-const measure = () => page.evaluate(() => new Promise((resolve) => {
-  const t0 = performance.now();
-  let first = null;
-  const samples = [];
-  const tick = () => {
-    const w = document.querySelector("plamo-translate")?.shadowRoot?.querySelector(".window");
-    const ps = w ? [...w.querySelectorAll(".body p")] : [];
-    const text = ps.map((p) => p.textContent).join("");
-    if (!first && text.trim()) first = performance.now() - t0;
-    if (text && samples.at(-1) !== text.length) samples.push(text.length);
-    if (ps.length && ps.every((p) => !p.classList.contains("pending") && !p.classList.contains("streaming"))) {
-      resolve({ firstMs: Math.round(first), doneMs: Math.round(performance.now() - t0), updates: samples.length, chars: text.length });
-    } else setTimeout(tick, 10);
-  };
-  tick();
-}));
+// 拡張の UI は closed な shadow root の中にあるので、content script の分離された環境の inspect() で状態を読む
+const inspect = () => sw.evaluate(async (id) => (await chrome.scripting.executeScript({ target: { tabId: id, frameIds: [0] }, func: () => globalThis.__plamoTranslate?.inspect() }))[0]?.result ?? null, tabId);
+// 最初の文字が出た時刻と訳し終えた時刻は、拡張がページ内で記録した値を読む
+const measure = async () => {
+  for (let i = 0; i < 1200; i++) {
+    const st = await inspect();
+    const w = st?.window;
+    if (st?.timings?.doneMs != null && w && !w.paragraphs.some((p) => p.cls === "pending" || p.cls === "streaming")) {
+      return { ...st.timings, chars: w.paragraphs.map((p) => p.text).join("").length };
+    }
+    await page.waitForTimeout(50);
+  }
+  return "timeout";
+};
 await select("#warm"); await call("translateSelection"); await measure();
 for (let i = 0; i < 3; i++) {
   await page.keyboard.press("Escape");
   await select("#long");
-  const m = measure();
   await call("translateSelection");
-  console.log("selection(long):", JSON.stringify(await m));
+  console.log("selection(long):", JSON.stringify(await measure()));
 }
 await page.keyboard.press("Escape");
 await call("translatePage");
 let partialSeen = 0;
 for (let i = 0; i < 400; i++) {
-  const s = await page.evaluate(() => {
-    const trs = [...document.querySelectorAll("plamo-tr")];
-    return { msg: document.querySelector("plamo-translate")?.shadowRoot?.querySelector(".status .msg")?.textContent ?? "", lens: trs.map((t) => t.textContent.length) };
-  });
+  const lens = await page.evaluate(() => [...document.querySelectorAll("plamo-tr")].map((t) => t.textContent.length));
+  const s = { msg: (await inspect())?.status ?? "", lens };
   if (s.lens.some((n, k) => n > 1)) partialSeen++;
   if (/翻訳済み/.test(s.msg)) { console.log("page:", s.msg, "| polls with text before done:", partialSeen); break; }
-  await page.waitForTimeout(20);
+  await page.waitForTimeout(50);
 }
 await ctx.close();
 srv.close();

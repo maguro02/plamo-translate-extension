@@ -192,7 +192,7 @@ async function completeOnServer(request, slot) {
   try {
     res = await fetch(`${SERVER_URL}/v1/completions`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...authHeaders() },
       body: JSON.stringify({
         prompt: buildPrompt(request),
         temperature: 0,
@@ -206,6 +206,12 @@ async function completeOnServer(request, slot) {
     });
   } catch {
     throw new EngineError("翻訳サーバー（127.0.0.1:8802）に接続できません", true);
+  }
+  if (res.status === 401) {
+    // サーバーが再起動してキーが変わった。次の確認でキーを受け取り直す
+    serverKey = null;
+    serverState = { ...serverState, ok: false, checkedAt: 0 };
+    throw new EngineError("翻訳サーバーの認証に失敗しました", true);
   }
   if (!res.ok) throw new EngineError(`翻訳サーバーがエラーを返しました（HTTP ${res.status}）`, false);
   if (!stream) return (await res.json()).choices[0].text.trim();
@@ -266,14 +272,25 @@ const waitingTabs = new Map();
 
 let serverState = { ok: false, reserved: false, concurrency: 4, checkedAt: 0 };
 
+// 同梱の起動プログラムが起動したサーバーは、起動ごとの API キーを必須にしている。キーはネイティブホストから受け取る
+let serverKey = null;
+const authHeaders = () => (serverKey ? { Authorization: `Bearer ${serverKey}` } : {});
+
+const fetchProps = () => fetch(`${SERVER_URL}/props`, { headers: authHeaders(), signal: AbortSignal.timeout(1000) });
+
 async function refreshServer(force = false) {
   if (!force && Date.now() - serverState.checkedAt < SERVER_CHECK_INTERVAL_MS) return serverState;
   try {
     const health = await fetch(`${SERVER_URL}/health`, { signal: AbortSignal.timeout(1000) });
     if (!health.ok) throw new Error(`HTTP ${health.status}`);
-    const props = await fetch(`${SERVER_URL}/props`, { signal: AbortSignal.timeout(1000) })
-      .then((r) => r.json())
-      .catch(() => ({}));
+    let res = await fetchProps();
+    if (res.status === 401 && native.installed !== false) {
+      await queryNative();
+      res = await fetchProps();
+    }
+    // キーを受け取れないサーバー（ほかの人が起動した、登録していない起動プログラムで起動した）は使わない
+    if (res.status === 401) throw new Error("unauthorized");
+    const props = await res.json().catch(() => ({}));
     const total = props.total_slots || 4;
     serverState = { ok: true, reserved: total >= 8, concurrency: Math.min(4, total), checkedAt: Date.now() };
   } catch {
@@ -352,6 +369,7 @@ function connectNative() {
   nativePort = port;
   port.onMessage.addListener((m) => {
     native.installed = true;
+    if (m.apiKey) serverKey = m.apiKey;
     switch (m.type) {
       case "status":
         Object.assign(native, {

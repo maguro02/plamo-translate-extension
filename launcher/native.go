@@ -140,6 +140,7 @@ func (h *host) sendStatus() {
 		"variant":         variant,
 		"modelReady":      h.store.exists(),
 		"updateAvailable": h.updateAvailable(),
+		"apiKey":          readAPIKey(h.base),
 	})
 }
 
@@ -212,7 +213,7 @@ func (h *host) adopt(srv *server) {
 	h.srv = srv
 	h.mu.Unlock()
 	h.log.Println("started:", srv.variant)
-	h.send(map[string]any{"type": "started", "variant": label(srv.variant)})
+	h.send(map[string]any{"type": "started", "variant": label(srv.variant), "apiKey": readAPIKey(h.base)})
 
 	go func() {
 		<-srv.done

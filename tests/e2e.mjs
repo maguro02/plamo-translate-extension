@@ -18,12 +18,14 @@ await page.goto("http://127.0.0.1:8899/");
 await page.waitForTimeout(300);
 const tabId = await sw.evaluate(async () => (await chrome.tabs.query({})).sort((a, b) => b.id - a.id)[0].id);
 const call = (fn) => sw.evaluate(([id, f]) => run(id, 0, new Function(`return globalThis.__plamoTranslate?.${f}()`)), [tabId, fn]);
-const win = page.locator("plamo-translate .window");
+// 拡張の UI は closed な shadow root の中にあるので、content script の分離された環境の inspect() で状態を読む
+const inspect = () => sw.evaluate(async (id) => (await chrome.scripting.executeScript({ target: { tabId: id, frameIds: [0] }, func: () => globalThis.__plamoTranslate?.inspect() }))[0]?.result ?? null, tabId);
 const select = (sel) => page.evaluate((s) => { const r = document.createRange(); r.selectNodeContents(document.querySelector(s)); getSelection().removeAllRanges(); getSelection().addRange(r); }, sel);
 const waitWindow = async (limitSec) => {
   let lastTitle = "";
   for (let i = 0; i < limitSec * 4; i++) {
-    const r = await win.evaluate((w) => ({ title: w.querySelector(".title").textContent, ps: [...w.querySelectorAll(".body p")].map((p) => ({ cls: p.className, t: p.textContent })) })).catch(() => null);
+    const w = (await inspect())?.window;
+    const r = w && { title: w.title, ps: w.paragraphs.map((p) => ({ cls: p.cls, t: p.text })) };
     if (r && r.title !== lastTitle && /準備中/.test(r.title)) { if (!lastTitle || /[05]0%|9\d%/.test(r.title)) console.log("   ", r.title); lastTitle = r.title; }
     if (r && r.ps.length && !r.ps.some((p) => p.cls === "pending" || p.cls === "streaming")) return r;
     await page.waitForTimeout(250);
@@ -41,7 +43,7 @@ await page.keyboard.press("Escape");
 const t1 = Date.now();
 await call("translatePage");
 for (let i = 0; i < 480; i++) {
-  const s = await page.locator("plamo-translate .status .msg").textContent().catch(() => "");
+  const s = (await inspect())?.status ?? "";
   if (/翻訳済み|接続できません|できません/.test(s)) { console.log("page:", s, `${((Date.now() - t1) / 1000).toFixed(1)}s`); break; }
   await page.waitForTimeout(250);
 }

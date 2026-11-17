@@ -134,13 +134,19 @@
     if (!settings.selectionButton) hideTrigger();
   });
 
+  const trusted = (handler) => (e) => {
+    if (e.isTrusted) handler(e);
+  };
+  let timings = null;
+
   const clamp = (v, min, max) => Math.min(Math.max(v, min), Math.max(min, max));
 
   function ensureHost() {
     if (host?.isConnected) return;
     host = document.createElement("plamo-translate");
     host.style.cssText = "position:fixed;top:0;left:0;width:0;height:0;z-index:2147483647;";
-    root = host.attachShadow({ mode: "open" });
+    // ページのスクリプトから中身（ほかのサイトの翻訳履歴を含む）を読めないよう closed にする
+    root = host.attachShadow({ mode: "closed" });
     root.innerHTML = `<style>${STYLE}</style>`;
     document.documentElement.appendChild(host);
     win = trigger = status = null;
@@ -199,11 +205,11 @@
       trigger.setAttribute("aria-label", "PLaMo で翻訳");
       // ボタンを押した瞬間にページの選択が解除されないようにする
       trigger.addEventListener("mousedown", (e) => e.preventDefault());
-      trigger.addEventListener("click", (e) => {
+      trigger.addEventListener("click", trusted((e) => {
         const { text, context } = pendingSelection;
         hideTrigger();
         translate(text, e.clientX, e.clientY, undefined, context);
-      });
+      }));
       root.appendChild(trigger);
     }
     trigger.style.left = `${clamp(x + 6, 4, innerWidth - 32)}px`;
@@ -224,16 +230,16 @@
     win.setAttribute("aria-label", "PLaMo 翻訳");
     win.innerHTML = WINDOW_HTML;
     const $ = (s) => win.querySelector(s);
-    $(".close").addEventListener("click", closeWindow);
-    $(".swap").addEventListener("click", () =>
+    $(".close").addEventListener("click", trusted(closeWindow));
+    $(".swap").addEventListener("click", trusted(() =>
       translate(state.text, 0, 0, state.target === "ja" ? "en" : "ja", state.context)
-    );
-    $(".copy").addEventListener("click", copy);
-    $(".toggle").addEventListener("click", () => (view === "history" ? ((view = "result"), render()) : showHistory()));
-    $(".clear").addEventListener("click", async () => {
+    ));
+    $(".copy").addEventListener("click", trusted(copy));
+    $(".toggle").addEventListener("click", trusted(() => (view === "history" ? ((view = "result"), render()) : showHistory())));
+    $(".clear").addEventListener("click", trusted(async () => {
       historyList = (await chrome.runtime.sendMessage({ type: "plamo:history:clear" })) || [];
       render();
-    });
+    }));
     enableDrag($(".head"));
     root.appendChild(win);
     win.style.left = `${x}px`;
@@ -242,7 +248,7 @@
 
   function enableDrag(handle) {
     handle.addEventListener("pointerdown", (e) => {
-      if (e.button !== 0 || e.target.closest("button")) return;
+      if (!e.isTrusted || e.button !== 0 || e.target.closest("button")) return;
       e.preventDefault();
       const r = win.getBoundingClientRect();
       const dx = e.clientX - r.left;
@@ -291,7 +297,7 @@
       div.textContent = text;
       b.appendChild(div);
     }
-    b.addEventListener("click", () => {
+    b.addEventListener("click", trusted(() => {
       state = {
         requestId: null,
         text: entry.source,
@@ -301,7 +307,7 @@
       };
       view = "result";
       render();
-    });
+    }));
     return b;
   }
 
@@ -347,6 +353,7 @@
     if (!text) return;
     ensureWindow(x, y);
     state = { requestId: crypto.randomUUID(), text, context, target: target ?? null, outputs: [null], fromHistory: false };
+    timings = { start: performance.now(), first: null, done: null, updates: 0 };
     view = "result";
     render();
     chrome.runtime.sendMessage({ type: "plamo:translate", requestId: state.requestId, text, target, context });
@@ -648,8 +655,8 @@
       status.innerHTML =
         '<span class="msg"></span><button class="restore" type="button">元に戻す</button>' +
         '<button class="hide" type="button" aria-label="閉じる">×</button>';
-      status.querySelector(".restore").addEventListener("click", restorePage);
-      status.querySelector(".hide").addEventListener("click", () => (status.hidden = true));
+      status.querySelector(".restore").addEventListener("click", trusted(restorePage));
+      status.querySelector(".hide").addEventListener("click", trusted(() => (status.hidden = true)));
       root.appendChild(status);
     }
     const lang = LANG_LABEL[page.target];
@@ -721,6 +728,11 @@
       }
     }
     if (msg.error && msg.index == null) state.outputs = [{ error: msg.error }];
+    if (timings && state.requestId === msg.requestId) {
+      timings.updates++;
+      if (timings.first == null && state.outputs.some((o) => o?.text?.trim())) timings.first = performance.now();
+      if (state.outputs.every((o) => o && !o.partial)) timings.done ??= performance.now();
+    }
     if (view === "result") render();
   });
 
@@ -754,5 +766,24 @@
   addEventListener("scroll", hideTrigger, { passive: true, capture: true });
   addEventListener("resize", keepInView);
 
-  globalThis.__plamoTranslate = { translateSelection, showHistory, translatePage, restorePage, togglePage };
+  // content script の分離された環境にだけ置くので、ページのスクリプトからは呼べない（テストは chrome.scripting で呼ぶ）
+  function inspect() {
+    const t = timings;
+    return {
+      window: win
+        ? {
+            title: win.querySelector(".title").textContent,
+            view,
+            paragraphs: [...win.querySelectorAll(".body p")].map((p) => ({ cls: p.className, text: p.textContent })),
+            entries: win.querySelectorAll(".entry").length,
+          }
+        : null,
+      trigger: !!trigger,
+      status: status && !status.hidden ? status.querySelector(".msg").textContent : null,
+      toast: toast?.isConnected ? toast.textContent : null,
+      timings: t && { firstMs: t.first && Math.round(t.first - t.start), doneMs: t.done && Math.round(t.done - t.start), updates: t.updates },
+    };
+  }
+
+  globalThis.__plamoTranslate = { translateSelection, showHistory, translatePage, restorePage, togglePage, inspect };
 })();

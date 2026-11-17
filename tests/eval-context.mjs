@@ -17,7 +17,8 @@ await page.goto("http://127.0.0.1:8899/blog.html");
 await page.waitForTimeout(300);
 const tabId = await sw.evaluate(async () => (await chrome.tabs.query({})).sort((a, b) => b.id - a.id)[0].id);
 const call = (fn) => sw.evaluate(([id, f]) => run(id, 0, new Function(`return globalThis.__plamoTranslate?.${f}()`)), [tabId, fn]);
-const win = page.locator("plamo-translate .window");
+// 拡張の UI は closed な shadow root の中にあるので、content script の分離された環境の inspect() で状態を読む
+const inspect = () => sw.evaluate(async (id) => (await chrome.scripting.executeScript({ target: { tabId: id, frameIds: [0] }, func: () => globalThis.__plamoTranslate?.inspect() }))[0]?.result ?? null, tabId);
 const SENTENCES = [
   "It's a no-brainer: if you don't pin your dependencies, your builds will eventually break.",
   "The new release ships with a handful of breaking changes, so read the migration guide before upgrading.",
@@ -39,8 +40,8 @@ for (const s of SENTENCES) {
   await call("translateSelection");
   let out = "timeout";
   for (let i = 0; i < 400; i++) {
-    const ps = await win.evaluate((w) => [...w.querySelectorAll(".body p")].map((p) => ({ c: p.className, t: p.textContent }))).catch(() => []);
-    if (ps.length && !ps.some((p) => p.c === "pending")) { out = ps.map((p) => p.t).join(" "); break; }
+    const ps = (await inspect())?.window?.paragraphs ?? [];
+    if (ps.length && !ps.some((p) => p.cls === "pending" || p.cls === "streaming")) { out = ps.map((p) => p.text).join(" "); break; }
     await page.waitForTimeout(150);
   }
   console.log("SRC:", s, "\n  ->", out);
@@ -48,7 +49,7 @@ for (const s of SENTENCES) {
 await page.keyboard.press("Escape");
 await call("translatePage");
 for (let i = 0; i < 400; i++) {
-  if (/翻訳済み/.test(await page.locator("plamo-translate .status .msg").textContent().catch(() => ""))) break;
+  if (/翻訳済み/.test((await inspect())?.status ?? "")) break;
   await page.waitForTimeout(150);
 }
 console.log("\n[ページ翻訳]");

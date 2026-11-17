@@ -6,6 +6,8 @@ package main
 import (
 	"bufio"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"flag"
 	"fmt"
@@ -234,11 +236,17 @@ func startServer(base, variant, modelPath string, port int, logPath string, back
 	if _, err := os.Stat(bin); err != nil {
 		return nil, err
 	}
+	key, keyPath, err := writeAPIKey(base)
+	if err != nil {
+		return nil, err
+	}
 	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
 	if err != nil {
 		return nil, err
 	}
-	// 4 並列 × 各 4096 トークン。拡張は段落単位で送るので 1 件あたりの長さはこれで足りる
+	// 4 並列 × 各 4096 トークン。拡張は段落単位で送るので 1 件あたりの長さはこれで足りる。
+	// 127.0.0.1 でもブラウザで開いたほかのサイトや別のプログラムから呼ばれうるので、起動ごとの API キーを必須にし、
+	// 処理中の文章が見える /slots も閉じる。キーはプロセス一覧に出ないようファイルで渡す
 	cmd := exec.Command(bin,
 		"-m", modelPath,
 		"--host", "127.0.0.1",
@@ -247,6 +255,8 @@ func startServer(base, variant, modelPath string, port int, logPath string, back
 		"-np", "4",
 		"--alias", "plamo-3-translate-2b",
 		"--no-webui",
+		"--no-slots",
+		"--api-key-file", keyPath,
 		"-lv", "2",
 	)
 	cmd.Dir = filepath.Join(base, variant)
@@ -265,9 +275,41 @@ func startServer(base, variant, modelPath string, port int, logPath string, back
 	go func() {
 		srv.err = cmd.Wait()
 		logFile.Close()
+		removeAPIKey(keyPath, key)
 		close(srv.done)
 	}()
 	return srv, nil
+}
+
+func apiKeyPath(base string) string { return filepath.Join(base, "run", "api-key") }
+
+func writeAPIKey(base string) (key, path string, err error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", "", err
+	}
+	key = hex.EncodeToString(b)
+	path = apiKeyPath(base)
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return "", "", err
+	}
+	return key, path, os.WriteFile(path, []byte(key+"\n"), 0o600)
+}
+
+// 起動中のサーバーの API キー。拡張にはネイティブメッセージング経由でだけ渡す
+func readAPIKey(base string) string {
+	b, err := os.ReadFile(apiKeyPath(base))
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(b))
+}
+
+// 後から起動した別のサーバーのキーを消さないよう、自分のキーのときだけ消す
+func removeAPIKey(path, key string) {
+	if b, err := os.ReadFile(path); err == nil && strings.TrimSpace(string(b)) == key {
+		_ = os.Remove(path)
+	}
 }
 
 func waitReady(url string, done chan struct{}) bool {
